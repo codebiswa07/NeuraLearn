@@ -11,7 +11,6 @@ AI tutoring, quiz system, and full Firebase backend.
 - Copy your config values into `.env`
 
 ### 2. Configure AI
-- Get your Anthropic API key from https://console.anthropic.com
 - Add `AI_API_KEY` to `.env`
 
 ### 3. Run the app
