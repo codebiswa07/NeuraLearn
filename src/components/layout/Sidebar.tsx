@@ -12,7 +12,7 @@ const navItems = [
   { group: 'Main',    items: [
     { href: '/dashboard',      icon: LayoutDashboard, label: 'Dashboard' },
     { href: '/dashboard/courses',        icon: BookOpen,        label: 'Courses' },
-    { href: '/dashboard/coding',         icon: Code2,           label: 'Coding Lab', badge: 'Live' },
+    { href: '/coding',         icon: Code2,           label: 'Coding Lab', badge: 'Live' },
     { href: '/dashboard/quiz/new',           icon: HelpCircle,      label: 'Quizzes' },
     { href: '/dashboard/ai-tutor',       icon: MessageSquare,   label: 'AI Tutor' },
   ]},

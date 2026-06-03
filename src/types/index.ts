@@ -11,6 +11,15 @@ export interface NLUser {
   createdAt: Date
   lastActive: Date
   streak: number
+  permissions?: {
+    canCreateRoom: boolean
+    canCreatePrivateRoom: boolean
+    canDeleteOwnRoom: boolean
+    canChat: boolean
+    canUseAI: boolean
+    canShareFiles: boolean
+    canRequestEdit: boolean
+  }
 }
 
 // ─── Course ───────────────────────────────────────────────────────────────
@@ -103,25 +112,36 @@ export type EditorLanguage = 'typescript' | 'javascript' | 'python' | 'go' | 'ru
 export interface CodingRoom {
   id: string
   name: string
+
   hostId: string
+
   participants: RoomParticipant[]
   files: RoomFile[]
+
   activeFileId: string
-  language: string
+  language: EditorLanguage
+
   isPublic: boolean
-  inviteCode: string
-  createdAt: Date
+
+  // NEW
+  requiresPin?: boolean
+  authPin?: string | null
 
   roomType?: 'admin' | 'student'
-  chatMode?: 'admin_only' | 'open'
+  chatMode?: 'open' | 'admin_only'
+
+  inviteCode: string
+
+  durationType?: 'permanent' | 'timed'
+  durationValue?: string
+  expiresAt?: Date | null
   isOfficial?: boolean
-  courseId?: string
-  createdBy?: string
-  createdByRole?: 'admin' | 'student'
+  createdAt?: Date
 }
 export interface RoomParticipant {
   uid: string
   displayName: string
+  photoURL?: string
   avatarColor: string
   role: 'host' | 'participant'
   isOnline: boolean
@@ -130,18 +150,49 @@ export interface RoomParticipant {
   joinedAt: Date
 }
 
+export type FileVisibility =
+  | 'host_public'
+  | 'public'
+  | 'host_only'
+  | 'private'
+
 export interface RoomFile {
   id: string
   name: string
   language: EditorLanguage
   content: string
   updatedAt: Date
+  editors?: string[]
+  editRequests?: {
+    uid: string
+    displayName: string
+    status: 'pending' | 'approved' | 'rejected'
+    requestedAt: Date
+  }[]
+  ownerId: string
+  ownerName?: string
+
+  visibility: FileVisibility
+
+  /**
+   * For host_public:
+   * true  = visible to everyone
+   * false = hidden by host
+   */
+  isVisible?: boolean
+
+  /**
+   * For public/private sharing:
+   * selected users who can view this file
+   */
+  sharedWith?: string[]
 }
 
 export interface ChatMessage {
   id: string
   roomId: string
   userId: string
+  photoURL?: string
   displayName: string
   text: string
   type: 'text' | 'code' | 'system'

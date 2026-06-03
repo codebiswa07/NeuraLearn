@@ -156,10 +156,17 @@ export const getRooms = async (): Promise<CodingRoom[]> => {
   })) as CodingRoom[]
 }
 export const createRoom = async (room: Partial<CodingRoom>) => {
-  await setDoc(doc(db, 'rooms', room.id as string), {
-    ...room,
-    createdAt: serverTimestamp(),
-  })
+  const cleanedRoom = Object.fromEntries(
+    Object.entries(room).filter(([_, value]) => value !== undefined)
+  )
+
+  await setDoc(
+    doc(db, 'rooms', room.id as string),
+    {
+      ...cleanedRoom,
+      createdAt: serverTimestamp(),
+    }
+  )
 }
 
 export const subscribeRoom = (roomId: string, cb: (r: CodingRoom) => void): Unsubscribe =>
@@ -251,16 +258,15 @@ export const updateRoomFileContent = async (
   content: string
 ) => {
   const room = await getRoom(roomId)
-
   if (!room) return
 
   const files = (room.files ?? []).map((file) =>
     file.id === fileId
       ? {
-        ...file,
-        content,
-        updatedAt: new Date(),
-      }
+          ...file,
+          content,
+          updatedAt: new Date(),
+        }
       : file
   )
 
@@ -283,10 +289,10 @@ export const joinRoom = async (
 
   const updatedParticipants = exists
     ? participants.map((p) =>
-        p.uid === participant.uid
-          ? { ...p, isOnline: true, joinedAt: new Date() }
-          : p
-      )
+      p.uid === participant.uid
+        ? { ...p, isOnline: true, joinedAt: new Date() }
+        : p
+    )
     : [...participants, participant]
 
   await updateDoc(doc(db, 'rooms', roomId), {
@@ -309,3 +315,237 @@ export const leaveRoom = async (roomId: string, uid: string) => {
   })
 }
 
+export const calculateRoomExpiry = (
+  durationType: 'permanent' | 'timed',
+  durationValue: string
+): Date | null => {
+  if (durationType === 'permanent') return null
+
+  const now = new Date()
+
+  // HH.MM.SS
+  if (/^\d{1,2}\.\d{1,2}\.\d{1,2}$/.test(durationValue)) {
+    const [hh, mm, ss] = durationValue.split('.').map(Number)
+
+    return new Date(
+      now.getTime() +
+      hh * 60 * 60 * 1000 +
+      mm * 60 * 1000 +
+      ss * 1000
+    )
+  }
+
+  // DD/MM:HH.MM.SS
+  if (/^\d{1,2}\/\d{1,2}:\d{1,2}\.\d{1,2}\.\d{1,2}$/.test(durationValue)) {
+    const [dayMonth, time] = durationValue.split(':')
+    const [days, months] = dayMonth.split('/').map(Number)
+    const [hh, mm, ss] = time.split('.').map(Number)
+
+    const expiresAt = new Date(now)
+    expiresAt.setMonth(expiresAt.getMonth() + months)
+    expiresAt.setDate(expiresAt.getDate() + days)
+    expiresAt.setHours(expiresAt.getHours() + hh)
+    expiresAt.setMinutes(expiresAt.getMinutes() + mm)
+    expiresAt.setSeconds(expiresAt.getSeconds() + ss)
+
+    return expiresAt
+  }
+
+  return null
+}
+
+export const cleanupExpiredRooms = async () => {
+  const rooms = await getRooms()
+  const now = new Date()
+
+  const expiredRooms = rooms.filter((room) => {
+    if (!room.expiresAt) return false
+
+    const expiresAt =
+      room.expiresAt instanceof Date
+        ? room.expiresAt
+        : new Date((room.expiresAt as any).seconds * 1000)
+
+    return expiresAt <= now
+  })
+
+  await Promise.all(
+    expiredRooms.map((room) => deleteDoc(doc(db, 'rooms', room.id)))
+  )
+}
+
+export const deleteRoom = (roomId: string) =>
+  deleteDoc(doc(db, 'rooms', roomId))
+
+
+export const kickUserFromRoom = async (roomId: string, uid: string) => {
+  const room = await getRoom(roomId)
+  if (!room) return
+
+  const updatedParticipants = (room.participants ?? []).filter(
+    (p) => p.uid !== uid
+  )
+
+  await updateDoc(doc(db, 'rooms', roomId), {
+    participants: updatedParticipants,
+    updatedAt: serverTimestamp(),
+  })
+}
+
+export const exitRoom = async (roomId: string, uid: string) => {
+  const room = await getRoom(roomId)
+  if (!room) return
+
+  const updatedParticipants = (room.participants ?? []).filter(
+    (p) => p.uid !== uid
+  )
+
+  await updateDoc(doc(db, 'rooms', roomId), {
+    participants: updatedParticipants,
+    updatedAt: serverTimestamp(),
+  })
+}
+
+export const updateRoomFiles = async (
+  roomId: string,
+  files: RoomFile[],
+  activeFileId?: string
+) => {
+  await updateDoc(doc(db, 'rooms', roomId), {
+    files,
+    ...(activeFileId ? { activeFileId } : {}),
+    updatedAt: serverTimestamp(),
+  })
+}
+
+export const shareRoomFile = async (
+  roomId: string,
+  fileId: string,
+  sharedWith: string[]
+) => {
+  const room = await getRoom(roomId)
+  if (!room) return
+
+  const files = (room.files ?? []).map((file) =>
+    file.id === fileId
+      ? {
+        ...file,
+        sharedWith,
+        visibility: 'public' as const,
+        updatedAt: new Date(),
+      }
+      : file
+  )
+
+  await updateDoc(doc(db, 'rooms', roomId), {
+    files,
+    updatedAt: serverTimestamp(),
+  })
+}
+
+export const requestFileEditPermission = async (
+  roomId: string,
+  fileId: string,
+  uid: string,
+  displayName: string
+) => {
+  const room = await getRoom(roomId)
+  if (!room) return
+
+  const files = (room.files ?? []).map((file) => {
+    if (file.id !== fileId) return file
+
+    const requests = file.editRequests ?? []
+    const alreadyRequested = requests.some(
+      (r) => r.uid === uid && r.status === 'pending'
+    )
+
+    if (alreadyRequested) return file
+
+    return {
+      ...file,
+      editRequests: [
+        ...requests,
+        {
+          uid,
+          displayName,
+          status: 'pending',
+          requestedAt: new Date(),
+        },
+      ],
+    }
+  })
+
+  await updateDoc(doc(db, 'rooms', roomId), {
+    files,
+    updatedAt: serverTimestamp(),
+  })
+}
+
+export const approveFileEditPermission = async (
+  roomId: string,
+  fileId: string,
+  uid: string
+) => {
+  const room = await getRoom(roomId)
+  if (!room) return
+
+  const files = (room.files ?? []).map((file) => {
+    if (file.id !== fileId) return file
+
+    return {
+      ...file,
+      editors: Array.from(new Set([...(file.editors ?? []), uid])),
+      editRequests: (file.editRequests ?? []).map((request) =>
+        request.uid === uid
+          ? { ...request, status: 'approved' as const }
+          : request
+      ),
+    }
+  })
+
+  await updateDoc(doc(db, 'rooms', roomId), {
+    files,
+    updatedAt: serverTimestamp(),
+  })
+}
+
+export const getUsers = async (): Promise<NLUser[]> => {
+  const snap = await getDocs(cols.users())
+
+  return snap.docs.map((docSnap) => ({
+    uid: docSnap.id,
+    ...docSnap.data(),
+  })) as NLUser[]
+}
+
+export const updateUserRolePermissions = async (
+  uid: string,
+  data: {
+    role: 'student' | 'admin' | 'instructor'
+    permissions: {
+      canCreateRoom: boolean
+      canCreatePrivateRoom: boolean
+      canDeleteOwnRoom: boolean
+      canChat: boolean
+      canUseAI: boolean
+      canShareFiles: boolean
+      canRequestEdit: boolean
+    }
+  }
+) => {
+  await updateDoc(doc(db, 'users', uid), {
+    ...data,
+    updatedAt: serverTimestamp(),
+  })
+}
+
+export const updateUserProfilePhoto = async (
+  uid: string,
+  photoURL: string
+) => {
+  await updateDoc(doc(db, 'users', uid), {
+    photoURL,
+    updatedAt: serverTimestamp(),
+  })
+}

@@ -18,6 +18,9 @@ import {
   Maximize2,
   Minimize2,
   RotateCcw,
+  SquareArrowOutUpRight,
+  EyeOff,
+  Eye,
 } from 'lucide-react'
 import type { CodingRoom, RoomFile, EditorLanguage } from '@/types'
 import { cn } from '@/utils/cn'
@@ -25,6 +28,10 @@ import {
   addFileToRoom,
   removeFileFromRoom,
   updateRoomFileContent,
+  updateRoomFiles,
+  shareRoomFile,
+  approveFileEditPermission,
+  requestFileEditPermission,
 } from '@/lib/firebase/firestore'
 
 const MonacoEditor = dynamic(
@@ -53,7 +60,7 @@ type OutputLine = {
   type: 'info' | 'success' | 'error'
 }
 
-export function CollabEditor({ room, ydoc, onRun }: CollabEditorProps) {
+export function CollabEditor({ room, userId, ydoc, onRun }: CollabEditorProps) {
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null)
 
   const [localFiles, setLocalFiles] = useState<RoomFile[]>(room.files ?? [])
@@ -65,13 +72,38 @@ export function CollabEditor({ room, ydoc, onRun }: CollabEditorProps) {
     setLocalFiles(room.files ?? [])
   }, [room.files])
 
-  const files = localFiles
+  const canViewFile = (file: RoomFile) => {
+    const isHost = userId === room.hostId
+    const isOwner = file.ownerId === userId
+    const isShared = file.sharedWith?.includes(userId)
+
+    if (file.visibility === 'host_public') {
+      if (isHost) return true
+      return file.isVisible !== false
+    }
+
+    if (file.visibility === 'public') {
+      return isOwner || isShared
+    }
+
+    if (file.visibility === 'host_only') {
+      return isOwner || isHost
+    }
+
+    if (file.visibility === 'private') {
+      return isOwner || isShared
+    }
+
+    return false
+  }
+  const files = localFiles.filter(canViewFile)
   const activeFile =
     files.find((file) => file.id === activeFileId) ?? files[0]
 
   const [output, setOutput] = useState<OutputLine[]>([
     { text: 'Ready. Press Run to execute.', type: 'info' },
   ])
+
 
   const [running, setRunning] = useState(false)
   const [showOutput, setShowOutput] = useState(false)
@@ -171,14 +203,34 @@ export function CollabEditor({ room, ydoc, onRun }: CollabEditorProps) {
 
     const trimmedName = fileName.trim()
 
-    const alreadyExists = files.some(
-      (file) => file.name.toLowerCase() === trimmedName.toLowerCase()
+    const alreadyExists = localFiles.some(
+      (file) =>
+        file.name.toLowerCase() === trimmedName.toLowerCase() &&
+        file.ownerId === userId
     )
 
     if (alreadyExists) {
-      alert('A file with this name already exists.')
+      alert('You already have a file with this name.')
       return
     }
+
+    const isHost = userId === room.hostId
+
+    const visibility = isHost
+      ? 'host_public'
+      : (prompt(
+        'Choose visibility: public, host_only, or private',
+        'private'
+      ) as RoomFile['visibility'])
+
+    const safeVisibility: RoomFile['visibility'] =
+      visibility === 'public' ||
+        visibility === 'host_only' ||
+        visibility === 'private'
+        ? visibility
+        : isHost
+          ? 'host_public'
+          : 'private'
 
     const newFile: RoomFile = {
       id: crypto.randomUUID(),
@@ -186,9 +238,21 @@ export function CollabEditor({ room, ydoc, onRun }: CollabEditorProps) {
       language: getLanguageFromFileName(trimmedName),
       content: '',
       updatedAt: new Date(),
+
+      ownerId: userId,
+      ownerName: isHost ? 'Host' : 'Student',
+
+      visibility: isHost ? 'host_public' : safeVisibility,
+      isVisible: true,
+      sharedWith: [],
     }
 
-    await addFileToRoom(room.id, newFile)
+    try {
+      await addFileToRoom(room.id, newFile)
+      setActiveFileId(newFile.id)
+    } catch {
+      alert('Unable to create file.')
+    }
   }
 
   const removeFile = async (fileId: string) => {
@@ -286,6 +350,95 @@ export function CollabEditor({ room, ydoc, onRun }: CollabEditorProps) {
     setOutput([{ text: 'Output cleared.', type: 'info' }])
   }
 
+  const toggleFileVisibility = async (fileId: string) => {
+    const updatedFiles = localFiles.map((file) =>
+      file.id === fileId
+        ? {
+          ...file,
+          isVisible: file.isVisible === false,
+          updatedAt: new Date(),
+        }
+        : file
+    )
+
+    setLocalFiles(updatedFiles)
+    await updateRoomFiles(room.id, updatedFiles)
+  }
+
+  const shareFile = async (fileId: string) => {
+    const target = localFiles.find((file) => file.id === fileId)
+    if (!target) return
+
+    if (target.ownerId !== userId && userId !== room.hostId) {
+      alert('Only file owner or host can share this file.')
+      return
+    }
+
+    const users = room.participants ?? []
+
+    const list = users
+      .filter((p) => p.uid !== userId)
+      .map((p, index) => `${index + 1}. ${p.displayName}`)
+      .join('\n')
+
+    if (!list) {
+      alert('No users available to share with.')
+      return
+    }
+
+    const input = prompt(
+      `Share "${target.name}" with users:\n\n${list}\n\nEnter numbers separated by comma, example: 1,2`
+    )
+
+    if (!input) return
+
+    const selectedIndexes = input
+      .split(',')
+      .map((item) => Number(item.trim()) - 1)
+      .filter((index) => index >= 0 && index < users.length)
+
+    const selectedUserIds = selectedIndexes
+      .map((index) => users.filter((p) => p.uid !== userId)[index]?.uid)
+      .filter(Boolean) as string[]
+
+    if (selectedUserIds.length === 0) {
+      alert('No valid users selected.')
+      return
+    }
+
+    await shareRoomFile(room.id, fileId, selectedUserIds)
+  }
+
+  const handleCodeChange = async (value?: string) => {
+    if (!activeFile || value === undefined) return
+
+    if (!canEditFile(activeFile)) {
+      return
+    }
+
+    const updatedFiles = localFiles.map((file) =>
+      file.id === activeFile.id
+        ? {
+          ...file,
+          content: value,
+          updatedAt: new Date(),
+        }
+        : file
+    )
+
+    setLocalFiles(updatedFiles)
+
+    await updateRoomFileContent(room.id, activeFile.id, value)
+  }
+
+
+  const canEditFile = (file: RoomFile) => {
+    const isOwner = file.ownerId === userId
+    const isApprovedEditor = file.editors?.includes(userId)
+
+    return isOwner || isApprovedEditor
+  }
+
   return (
     <div
       className={cn(
@@ -325,7 +478,6 @@ export function CollabEditor({ room, ydoc, onRun }: CollabEditorProps) {
                         {file.name}
                       </span>
                     </button>
-
                     <button
                       onClick={(e) => {
                         e.stopPropagation()
@@ -341,6 +493,63 @@ export function CollabEditor({ room, ydoc, onRun }: CollabEditorProps) {
                     >
                       <X className="h-3.5 w-3.5 text-white/40 hover:text-red-400" />
                     </button>
+                    {((file.ownerId ?? room.hostId) === userId || userId === room.hostId) &&
+                      (file.visibility ?? 'host_public') !== 'host_public' && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            shareFile(file.id)
+                          }}
+                          className="rounded px-1 text-[10px] text-white/40 hover:bg-white/10 hover:text-white"
+                          title="Share file"
+                        >
+                          <SquareArrowOutUpRight size={15} />
+                        </button>
+                      )}
+                    {activeFile && !canEditFile(activeFile) && (
+                      <button
+                        onClick={() =>
+                          requestFileEditPermission(
+                            room.id,
+                            activeFile.id,
+                            userId,
+                            'Student'
+                          )
+                        }
+                        className="rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white"
+                      >
+                        Request Edit
+                      </button>
+                    )}
+                    {activeFile?.ownerId === userId &&
+                      activeFile.editRequests
+                        ?.filter((request) => request.status === 'pending')
+                        .map((request) => (
+                          <button
+                            key={request.uid}
+                            onClick={() =>
+                              approveFileEditPermission(room.id, activeFile.id, request.uid)
+                            }
+                            className="rounded-lg bg-green-600 px-3 py-1.5 text-xs font-semibold text-white"
+                          >
+                            Approve {request.displayName}
+                          </button>
+                        ))}
+                    {userId === room.hostId &&
+                      (file.visibility ?? 'host_public') === 'host_public' && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            toggleFileVisibility(file.id)
+                          }}
+                          className="rounded px-1 text-[10px] text-white/40 hover:bg-white/10 hover:text-white"
+                          title={file.isVisible === false ? 'Show file' : 'Hide file'}
+                        >
+                          {file.isVisible === false ? <Eye size={12} /> : <EyeOff size={12} />}
+                        </button>
+                      )}
                   </div>
                 )
               })
@@ -439,8 +648,13 @@ export function CollabEditor({ room, ydoc, onRun }: CollabEditorProps) {
           height="100%"
           language={language}
           value={activeFile?.content ?? '// Start coding...\n'}
+          onChange={handleCodeChange}
           onMount={handleMount}
           options={{
+            readOnly: activeFile ? !canEditFile(activeFile) : true,
+            readOnlyMessage: {
+              value: 'You need edit permission for this file.',
+            },
             fontSize: 14,
             fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
             fontLigatures: true,

@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { RoleGuard } from '@/features/auth/RoleGuard'
 import { StatCard, Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
-import { Plus, TrendingUp } from 'lucide-react'
+import { Plus, TrendingUp, UserRoundCog } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { getCourses } from '@/lib/firebase/firestore'
 import { CoursePerformanceChart } from '@/components/charts/Courseperformance'
@@ -33,46 +33,53 @@ export default function AdminPage() {
             <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Admin Panel</h1>
             <p className="text-sm text-slate-500">NeuraLearn Platform Management</p>
           </div>
-          <Button variant="primary">
-            <Link href="/dashboard/admin/course">
-              <Plus className="w-4 h-4" /> Create Course
-            </Link>
-          </Button>
+          <div className="flex items-center gap-4">
+        <Button variant="primary">
+          <Link href="/dashboard/admin/manage">
+            <UserRoundCog className="w-4 h-4" /> Manage Users
+          </Link>
+        </Button>
+        <Button variant="primary">
+          <Link href="/dashboard/admin/course">
+            <Plus className="w-4 h-4" /> Create Course
+          </Link>
+        </Button>
         </div>
-
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-          <StatCard label="Total Students" value="1,248" change="↑ 84 this week" changeType="up" />
-          <StatCard label="Active Courses" value="24" change="↑ 3 this month" changeType="up" />
-          <StatCard label="Completion Rate" value="71%" change="↑ 4% vs last" changeType="up" />
-          <StatCard label="Lab Sessions" value="342" change="↑ 28 today" changeType="up" />
         </div>
+      </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Card>
-            <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-slate-900 dark:text-white">Course Performance</h2>
-              <Badge variant="blue"><TrendingUp className="w-3 h-3 inline mr-1" />Live</Badge>
-            </div>
-            <div className="p-4 text-sm text-slate-500 text-center py-10">
-              <CoursePerformanceChart courses={courses} />
-            </div>
-          </Card>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <StatCard label="Total Students" value="1,248" change="↑ 84 this week" changeType="up" />
+        <StatCard label="Active Courses" value="24" change="↑ 3 this month" changeType="up" />
+        <StatCard label="Completion Rate" value="71%" change="↑ 4% vs last" changeType="up" />
+        <StatCard label="Lab Sessions" value="342" change="↑ 28 today" changeType="up" />
+      </div>
 
-          <Card>
-            <div className="p-4 border-b border-slate-100 dark:border-slate-800">
-              <h2 className="text-sm font-semibold text-slate-900 dark:text-white">Recent Activity</h2>
-            </div>
-            <div>
-              {RECENT_ACTIVITY.map((a, i) => (
-                <div key={i} className="flex items-center gap-3 px-4 py-3 border-b border-slate-50 dark:border-slate-800/50 last:border-0">
-                  <span className="text-lg">{a.emoji}</span>
-                  <span className="text-sm text-slate-700 dark:text-slate-300 flex-1">{a.text}</span>
-                  <span className="text-xs text-slate-400 whitespace-nowrap">{a.time}</span>
-                </div>
-              ))}
-            </div>
-          </Card>
-        </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Card>
+          <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-slate-900 dark:text-white">Course Performance</h2>
+            <Badge variant="blue"><TrendingUp className="w-3 h-3 inline mr-1" />Live</Badge>
+          </div>
+          <div className="p-4 text-sm text-slate-500 text-center py-10">
+            <CoursePerformanceChart courses={courses} />
+          </div>
+        </Card>
+
+        <Card>
+          <div className="p-4 border-b border-slate-100 dark:border-slate-800">
+            <h2 className="text-sm font-semibold text-slate-900 dark:text-white">Recent Activity</h2>
+          </div>
+          <div>
+            {RECENT_ACTIVITY.map((a, i) => (
+              <div key={i} className="flex items-center gap-3 px-4 py-3 border-b border-slate-50 dark:border-slate-800/50 last:border-0">
+                <span className="text-lg">{a.emoji}</span>
+                <span className="text-sm text-slate-700 dark:text-slate-300 flex-1">{a.text}</span>
+                <span className="text-xs text-slate-400 whitespace-nowrap">{a.time}</span>
+              </div>
+            ))}
+          </div>
+        </Card>
       </div>
     </RoleGuard>
   )

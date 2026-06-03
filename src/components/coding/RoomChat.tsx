@@ -106,7 +106,7 @@ export function RoomChat({ messages, userId, onSend, activeTab, onSwitchTab, can
                 >
                   {m.userId !== userId && (
                     <div className="flex items-center gap-1 mb-1">
-                      <Avatar name={m.displayName} uid={m.userId} size="xs" />
+                      <Avatar name={m.displayName} uid={m.userId} photoURL={m.photoURL} size="xs" />
                       <span className="text-[10px] font-semibold text-slate-400">
                         {m.displayName}
                       </span>

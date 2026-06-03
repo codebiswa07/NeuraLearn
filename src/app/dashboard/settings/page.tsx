@@ -1,18 +1,54 @@
 'use client'
 
 import { useState } from 'react'
-import { Bell, Lock, Moon, Sun, User, Save } from 'lucide-react'
+import { useAuth } from '@/hooks/useAuth'
+import { Camera, Bell, Lock, Moon, Sun, User, Save } from 'lucide-react'
+import { uploadProfileImage } from '@/lib/firebase/storage'
+import { updateUserAvatar } from '@/lib/firebase/auth'
+import { updateUserProfilePhoto } from '@/lib/firebase/firestore'
+
+
 
 export default function SettingsPage() {
-  const [name, setName] = useState('Biswaprakash')
-  const [email, setEmail] = useState('student@neuralearn.com')
+  const { user } = useAuth()
+  const [name, setName] = useState(user?.displayName || '')
+  const [email, setEmail] = useState(user?.email || '')
   const [darkMode, setDarkMode] = useState(true)
   const [notifications, setNotifications] = useState(true)
-
+  const [uploading, setUploading] = useState(false)
   const handleSave = () => {
     alert('Settings saved successfully!')
   }
+  const handleAvatarUpload = async (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = e.target.files?.[0]
 
+    if (!file || !user) return
+
+    try {
+      setUploading(true)
+
+      const photoURL = await uploadProfileImage(
+        user.uid,
+        file
+      )
+
+      await updateUserAvatar(photoURL)
+
+      await updateUserProfilePhoto(
+        user.uid,
+        photoURL
+      )
+
+      alert('Profile picture updated')
+    } catch (error) {
+      console.error(error)
+      alert('Upload failed')
+    } finally {
+      setUploading(false)
+    }
+  }
   return (
     <div className="p-6 max-w-5xl mx-auto">
       <div className="mb-8">
@@ -23,7 +59,49 @@ export default function SettingsPage() {
           Manage your account preferences and application settings.
         </p>
       </div>
+      <div className="flex items-center gap-6 mb-8">
+        <div className="relative">
+          <img
+            src={
+              user?.photoURL ||
+              `https://ui-avatars.com/api/?name=${encodeURIComponent(
+                name || 'User'
+              )}`
+            }
+            alt="Profile"
+            className="w-24 h-24 rounded-2xl object-cover border border-slate-200 dark:border-slate-700"
+          />
 
+          <label className="absolute -bottom-2 -right-2 cursor-pointer">
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleAvatarUpload}
+            />
+
+            <div className="w-10 h-10 rounded-xl bg-brand-600 text-white flex items-center justify-center hover:bg-brand-700 transition">
+              <Camera className="w-4 h-4" />
+            </div>
+          </label>
+        </div>
+
+        <div>
+          <h3 className="font-semibold text-slate-900 dark:text-white">
+            Profile Picture
+          </h3>
+
+          <p className="text-sm text-slate-500">
+            Upload JPG, PNG or WebP
+          </p>
+
+          {uploading && (
+            <p className="text-xs text-brand-600 mt-2">
+              Uploading...
+            </p>
+          )}
+        </div>
+      </div>
       <div className="grid gap-6">
         {/* Profile */}
         <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6">
@@ -69,14 +147,12 @@ export default function SettingsPage() {
 
             <button
               onClick={() => setDarkMode(!darkMode)}
-              className={`w-14 h-8 rounded-full transition ${
-                darkMode ? 'bg-indigo-600' : 'bg-slate-300'
-              }`}
+              className={`w-14 h-8 rounded-full transition ${darkMode ? 'bg-indigo-600' : 'bg-slate-300'
+                }`}
             >
               <div
-                className={`w-6 h-6 bg-white rounded-full mt-1 transition ${
-                  darkMode ? 'ml-7' : 'ml-1'
-                }`}
+                className={`w-6 h-6 bg-white rounded-full transition ${darkMode ? 'ml-7' : 'ml-1'
+                  }`}
               />
             </button>
           </div>
@@ -94,14 +170,12 @@ export default function SettingsPage() {
 
             <button
               onClick={() => setNotifications(!notifications)}
-              className={`w-14 h-8 rounded-full transition ${
-                notifications ? 'bg-green-600' : 'bg-slate-300'
-              }`}
+              className={`w-14 h-8 rounded-full transition ${notifications ? 'bg-green-600' : 'bg-slate-300'
+                }`}
             >
               <div
-                className={`w-6 h-6 bg-white rounded-full mt-1 transition ${
-                  notifications ? 'ml-7' : 'ml-1'
-                }`}
+                className={`w-6 h-6 bg-white rounded-full transition ${notifications ? 'ml-7' : 'ml-1'
+                  }`}
               />
             </button>
           </div>

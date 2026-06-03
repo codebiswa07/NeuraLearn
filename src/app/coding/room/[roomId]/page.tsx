@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeftToLine } from 'lucide-react'
 
@@ -18,6 +18,8 @@ import {
   sendChatMessage,
   joinRoom,
   leaveRoom,
+  kickUserFromRoom,
+  exitRoom,
 } from '@/lib/firebase/firestore'
 
 import type { CodingRoom, ChatMessage } from '@/types'
@@ -34,6 +36,20 @@ export default function RoomPage() {
   const [activeTab, setActiveTab] = useState<'chat' | 'ai'>('chat')
 
   const uid = user?.uid ?? 'guest'
+
+  const handleKickUser = async (targetUid: string) => {
+    if (!room) return
+    if (room.hostId !== user?.uid && user?.role !== 'admin') return
+
+    await kickUserFromRoom(room.id, targetUid)
+  }
+  const router = useRouter()
+  const handleExitRoom = async () => {
+    if (!room || !user) return
+
+    await exitRoom(room.id, user.uid)
+    router.push('/coding')
+  }
 
   useEffect(() => {
     if (!roomId) return
@@ -157,7 +173,18 @@ export default function RoomPage() {
             participants={room.participants ?? []}
             inviteCode={room.inviteCode ?? ''}
             roomId={room.id}
+            authPin={room.authPin ?? undefined}
+            showPin={room.hostId === user?.uid}
+            currentUserId={uid}
+            hostId={room.hostId}
+            onKickUser={handleKickUser}
           />
+          <button
+            onClick={handleExitRoom}
+            className="m-3 rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-50 dark:border-red-900/60 dark:hover:bg-red-950/30"
+          >
+            Exit Room
+          </button>
         </div>
       </aside>
 

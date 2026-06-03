@@ -45,7 +45,7 @@ export async function loginWithGoogle(): Promise<User> {
   return cred.user
 }
 
-export const signOut      = () => fbSignOut(auth)
+export const signOut = () => fbSignOut(auth)
 export const resetPassword = (email: string) => sendPasswordResetEmail(auth, email)
 export const onAuthChange = (cb: (user: User | null) => void) => onAuthStateChanged(auth, cb)
 
@@ -60,4 +60,14 @@ export async function updateUserPassword(currentPassword: string, newPassword: s
   const credential = EmailAuthProvider.credential(user.email, currentPassword)
   await reauthenticateWithCredential(user, credential)
   await updatePassword(user, newPassword)
+}
+
+export const updateUserAvatar = async (
+  photoURL: string
+) => {
+  if (!auth.currentUser) return
+
+  await updateProfile(auth.currentUser, {
+    photoURL,
+  })
 }
