@@ -5,8 +5,17 @@ import {
 } from 'firebase/firestore'
 import { db } from './config'
 import type {
-  Course, UserProgress, Quiz, QuizAttempt, CodingRoom,
-  Certificate, ChatMessage, AppNotification, NLUser
+  Course,
+  UserProgress,
+  Quiz,
+  QuizAttempt,
+  CodingRoom,
+  RoomFile,
+  RoomParticipant,
+  Certificate,
+  ChatMessage,
+  AppNotification,
+  NLUser,
 } from '@/types'
 
 export const cols = {
@@ -138,6 +147,21 @@ export const getRoom = async (id: string) => {
   const snap = await getDoc(doc(db, 'rooms', id))
   return snap.exists() ? ({ id: snap.id, ...snap.data() } as CodingRoom) : null
 }
+export const getRooms = async (): Promise<CodingRoom[]> => {
+  const snap = await getDocs(collection(db, 'rooms'))
+
+  return snap.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data(),
+  })) as CodingRoom[]
+}
+export const createRoom = async (room: Partial<CodingRoom>) => {
+  await setDoc(doc(db, 'rooms', room.id as string), {
+    ...room,
+    createdAt: serverTimestamp(),
+  })
+}
+
 export const subscribeRoom = (roomId: string, cb: (r: CodingRoom) => void): Unsubscribe =>
   onSnapshot(doc(db, 'rooms', roomId), snap => {
     if (snap.exists()) cb({ id: snap.id, ...snap.data() } as CodingRoom)
@@ -173,3 +197,115 @@ export const createNotification = (userId: string, data: Omit<AppNotification, '
   addDoc(cols.notifications(userId), { ...data, userId, createdAt: serverTimestamp() })
 export const deleteNotification = (userId: string, notifId: string) =>
   deleteDoc(doc(db, 'users', userId, 'notifications', notifId))
+
+// Room Files
+
+export const addFileToRoom = async (
+  roomId: string,
+  file: RoomFile
+) => {
+  const room = await getRoom(roomId)
+
+  if (!room) return
+
+  await updateDoc(doc(db, 'rooms', roomId), {
+    files: [...(room.files ?? []), file],
+    activeFileId: file.id,
+    updatedAt: serverTimestamp(),
+  })
+}
+
+export const removeFileFromRoom = async (
+  roomId: string,
+  fileId: string
+) => {
+  const room = await getRoom(roomId)
+
+  if (!room) return
+
+  const files = room.files ?? []
+
+  if (files.length <= 1) {
+    return
+  }
+
+  const remainingFiles = files.filter(
+    (file) => file.id !== fileId
+  )
+
+  const nextActiveFile =
+    room.activeFileId === fileId
+      ? remainingFiles[0]?.id
+      : room.activeFileId
+
+  await updateDoc(doc(db, 'rooms', roomId), {
+    files: remainingFiles,
+    activeFileId: nextActiveFile,
+    updatedAt: serverTimestamp(),
+  })
+}
+
+export const updateRoomFileContent = async (
+  roomId: string,
+  fileId: string,
+  content: string
+) => {
+  const room = await getRoom(roomId)
+
+  if (!room) return
+
+  const files = (room.files ?? []).map((file) =>
+    file.id === fileId
+      ? {
+        ...file,
+        content,
+        updatedAt: new Date(),
+      }
+      : file
+  )
+
+  await updateDoc(doc(db, 'rooms', roomId), {
+    files,
+    updatedAt: serverTimestamp(),
+  })
+}
+
+export const joinRoom = async (
+  roomId: string,
+  participant: RoomParticipant
+) => {
+  const room = await getRoom(roomId)
+  if (!room) return
+
+  const participants = room.participants ?? []
+
+  const exists = participants.some((p) => p.uid === participant.uid)
+
+  const updatedParticipants = exists
+    ? participants.map((p) =>
+        p.uid === participant.uid
+          ? { ...p, isOnline: true, joinedAt: new Date() }
+          : p
+      )
+    : [...participants, participant]
+
+  await updateDoc(doc(db, 'rooms', roomId), {
+    participants: updatedParticipants,
+    updatedAt: serverTimestamp(),
+  })
+}
+
+export const leaveRoom = async (roomId: string, uid: string) => {
+  const room = await getRoom(roomId)
+  if (!room) return
+
+  const updatedParticipants = (room.participants ?? []).map((p) =>
+    p.uid === uid ? { ...p, isOnline: false } : p
+  )
+
+  await updateDoc(doc(db, 'rooms', roomId), {
+    participants: updatedParticipants,
+    updatedAt: serverTimestamp(),
+  })
+}
+

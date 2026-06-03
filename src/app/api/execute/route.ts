@@ -1,42 +1,54 @@
 import { type NextRequest, NextResponse } from 'next/server'
-
-// Piston API — FREE, no key needed!
-const PISTON_API = 'https://emkc.org/api/v2/piston'
-
-const LANG_MAP: Record<string, { language: string; version: string }> = {
-  typescript: { language: 'typescript', version: '5.0.3' },
-  javascript: { language: 'javascript', version: '18.15.0' },
-  python:     { language: 'python',     version: '3.10.0' },
-  go:         { language: 'go',         version: '1.20.3' },
-  rust:       { language: 'rust',       version: '1.68.2' },
-  cpp:        { language: 'c++',        version: '10.2.0' },
-}
+import vm from 'node:vm'
 
 export async function POST(req: NextRequest) {
   try {
     const { code, language } = await req.json()
-    const lang = LANG_MAP[language]
-    if (!lang) return NextResponse.json({ error: `Unsupported: ${language}` }, { status: 400 })
 
-    const res = await fetch(`${PISTON_API}/execute`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        language: lang.language, version: lang.version,
-        files: [{ content: code }],
-        stdin: '', args: [],
-        compile_timeout: 10000, run_timeout: 5000,
-      }),
+    if (!['javascript', 'typescript'].includes(language)) {
+      return NextResponse.json({
+        stdout: '',
+        stderr: `Only JavaScript/TypeScript execution is supported in free local mode. Current: ${language}`,
+        exitCode: 1,
+      })
+    }
+
+    const output: string[] = []
+
+    const sandbox = {
+      console: {
+        log: (...args: unknown[]) => {
+          output.push(args.map(String).join(' '))
+        },
+        error: (...args: unknown[]) => {
+          output.push(args.map(String).join(' '))
+        },
+      },
+    }
+
+    vm.createContext(sandbox)
+
+    // Basic TS cleanup for simple demo code
+    const executableCode = code
+      .replace(/: *number/g, '')
+      .replace(/: *string/g, '')
+      .replace(/: *boolean/g, '')
+      .replace(/interface[\s\S]*?\}/g, '')
+
+    vm.runInContext(executableCode, sandbox, {
+      timeout: 3000,
     })
 
-    const data = await res.json()
     return NextResponse.json({
-      stdout: data.run?.stdout ?? '',
-      stderr: data.run?.stderr ?? '',
-      exitCode: data.run?.code ?? 0,
+      stdout: output.join('\n'),
+      stderr: '',
+      exitCode: 0,
     })
   } catch (err) {
-    console.error('[Execute]', err)
-    return NextResponse.json({ error: 'Execution service error' }, { status: 500 })
+    return NextResponse.json({
+      stdout: '',
+      stderr: err instanceof Error ? err.message : 'Execution failed',
+      exitCode: 1,
+    })
   }
 }

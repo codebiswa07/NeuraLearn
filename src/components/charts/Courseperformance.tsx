@@ -9,7 +9,7 @@ import {
   YAxis,
 } from 'recharts'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card'
-import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/Chart'
+import { ChartContainer, ChartTooltip, ChartTooltipContent } from '../ui/Chart'
 import type { Course } from '@/types'
 
 interface Props {

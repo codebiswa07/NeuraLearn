@@ -103,17 +103,22 @@ export type EditorLanguage = 'typescript' | 'javascript' | 'python' | 'go' | 'ru
 export interface CodingRoom {
   id: string
   name: string
-  courseId?: string
   hostId: string
   participants: RoomParticipant[]
   files: RoomFile[]
   activeFileId: string
-  language: EditorLanguage
+  language: string
   isPublic: boolean
   inviteCode: string
   createdAt: Date
-}
 
+  roomType?: 'admin' | 'student'
+  chatMode?: 'admin_only' | 'open'
+  isOfficial?: boolean
+  courseId?: string
+  createdBy?: string
+  createdByRole?: 'admin' | 'student'
+}
 export interface RoomParticipant {
   uid: string
   displayName: string
